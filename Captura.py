@@ -16,9 +16,9 @@ dados = {
 
 
 def obter_uso():
-    usuario = ps.users()
+    # usuario = ps.users()
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    user = usuario[0].name
+    user = "Ronaldo" #seu nome aqui
     cpuPercent = ps.cpu_percent(interval=1)
     RAM = ps.virtual_memory()
     disco = ps.disk_usage('/')
