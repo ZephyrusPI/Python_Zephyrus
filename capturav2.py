@@ -29,10 +29,12 @@ config_mysql = {
 }
 
 # Função para coletar métricas 
+nomeUser = ps.users()[0].name
 def obter_uso():
+
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     id = 2  # ID do ventilador
-    modelo = "Dx3873"
+    modelo = "Drager Evita Infinity V500"
     area = "UTI"
     possuiBateria = True
 
@@ -61,7 +63,7 @@ def obter_uso():
 # Função para salvar em CSV 
 def salvar_csv():
     df = pd.DataFrame(dados)
-    df.to_csv("coletaGeralGrupo2.csv", encoding="utf-8", index=False)
+    df.to_csv(f"coleta{nomeUser}.csv", encoding="utf-8", index=False)
 
 
 #Salvar no banco MySQL
@@ -107,12 +109,12 @@ def enviar_s3():
         aws_access_key_id='',
         aws_secret_access_key='',
         aws_session_token='',
-        region_name=''
+        region_name='us-east-1'
     )
 
-    nome_bucket = ''
-    caminho_arquivo_local = 'coletaGeralGrupo2.csv'
-    nome_objeto = 'coletaRawZephyrus.csv'
+    nome_bucket = 'raw-zephyrus'
+    caminho_arquivo_local = f"coleta{nomeUser}.csv"
+    nome_objeto = f"coleta{nomeUser}.csv"
 
     try:
         # 1. Tenta baixar o arquivo existente do S3
