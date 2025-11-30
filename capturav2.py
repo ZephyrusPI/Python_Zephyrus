@@ -2,7 +2,6 @@ import psutil as ps
 import pandas as pd
 import time
 import boto3
-import pymysql
 from datetime import datetime
 
 # Dicionário de dados 
@@ -18,18 +17,7 @@ dados = {
     "Bateria": []
 }
 
-# Configuração do MySQL 
-config_mysql = {
-    "host": "",
-    "port":3306,
-    "user": "",
-    "password": "",
-    "database": "",
-    "connect_timeout":10
-}
-
 # Função para coletar métricas 
-nomeUser = ps.users()[0].name
 def obter_uso():
 
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -65,91 +53,46 @@ def salvar_csv():
     df = pd.DataFrame(dados)
     df.to_csv(f"coleta{nomeUser}.csv", encoding="utf-8", index=False)
 
-
-#Salvar no banco MySQL
-def salvar_mysql():
-    print("entrei no salvar_mysql")
-    try:
-        conexao = pymysql.connect(**config_mysql)
-        cursor = conexao.cursor()
-        for i in range(len(dados["timestamp"])):
-           cursor.execute("""
-    INSERT INTO coleta
-    (timestamp, ID_Equipamento, Modelo, Area, CPU, RAM, Disco, Processos, Bateria)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-""", (
-    dados["timestamp"][i],
-    dados["ID"][i],
-    dados["Modelo"][i],
-    dados["Area"][i],
-    dados["CPU"][i],
-    dados["RAM"][i],
-    dados["Disco"][i],
-    dados["Processos"][i],
-    str(dados["Bateria"][i])
-))
-
-        conexao.commit()
-        print(f"{len(dados['timestamp'])} registros salvos no MySQL.")
-    except Exception as e:
-        print("Erro ao salvar no MySQL:", e)
-    finally:
-        try:
-            cursor.close()
-            conexao.close()
-        except:
-            pass
-
+nomeUser = ps.users()[0].name
 
 def enviar_s3():
     import io
+    agora = datetime.now()
+
+    ano = agora.year
+    mes = f"{agora.month:02d}"
+    semana = f"{agora.isocalendar().week:02d}"
+    dia = f"{agora.day:02d}"
+    hora = f"{agora.hour:02d}"
+    minuto = f"{agora.minute:02d}"
 
     s3_client = boto3.client(
         's3',
         aws_access_key_id='',
         aws_secret_access_key='',
-        aws_session_token='',
+        aws_session_token=''
         region_name='us-east-1'
-    )
+    )   
 
     nome_bucket = 'raw-zephyrus'
     caminho_arquivo_local = f"coleta{nomeUser}.csv"
-    nome_objeto = f"coleta{nomeUser}.csv"
+    nome_objeto = f"{nomeUser}/Ano:{ano}/Mes:{mes}/Semana:{semana}/Dia:{dia}/Hora:{hora}/Minuto:{minuto}/coleta{nomeUser}.csv"
 
     try:
-        # 1. Tenta baixar o arquivo existente do S3
-        buffer = io.BytesIO()
-        s3_client.download_fileobj(nome_bucket, nome_objeto, buffer)
-        buffer.seek(0)
+        df = pd.read_csv(caminho_arquivo_local)
+        csv_buffer = io.StringIO()
+        df.to_csv(csv_buffer, index=False)
 
-        # 2. Lê o CSV existente
-        df_existente = pd.read_csv(buffer)
+        s3_client.put_object(
+            Bucket=nome_bucket,
+            Key=nome_objeto,
+            Body=csv_buffer.getvalue()
+        )
 
-        # 3. Lê o CSV novo local
-        df_novo = pd.read_csv(caminho_arquivo_local)
+        print("Arquivo enviado ao S3 com sucesso!")
 
-        # 4. Concatena (mantém histórico)
-        df_final = pd.concat([df_existente, df_novo], ignore_index=True)
-
-    except s3_client.exceptions.NoSuchKey:
-        print("Nenhum arquivo existente no S3. Criando novo...")
-        df_final = pd.read_csv(caminho_arquivo_local)
     except Exception as e:
-        print(f"Erro ao baixar arquivo do S3: {e}")
-        df_final = pd.read_csv(caminho_arquivo_local)
-
-    # 5. Salva o resultado em um buffer
-    csv_buffer = io.StringIO()
-    df_final.to_csv(csv_buffer, index=False)
-
-    # 6. Faz upload do CSV combinado para o S3
-    s3_client.put_object(
-        Bucket=nome_bucket,
-        Key=nome_objeto,
-        Body=csv_buffer.getvalue()
-    )
-
-    print("Arquivo atualizado enviado ao S3 com sucesso!")
+        print(f"Erro ao enviar para o S3: {e}")
 
 
 # Loop principal 
@@ -177,11 +120,10 @@ def monitoramento(intervalo=5, intervalo_enviar=60):
 
         
         if contador >= intervalo_enviar:
-            salvar_mysql()
             enviar_s3()
             contador = 0
 
         time.sleep(intervalo)
 
 
-monitoramento(intervalo=5, intervalo_enviar=60)
+monitoramento(intervalo=20, intervalo_enviar=60)
